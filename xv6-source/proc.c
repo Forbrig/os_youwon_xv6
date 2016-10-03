@@ -95,6 +95,7 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
+  p->tickets = DEFAULT_TICKETS; // da a quantidade padrao pro init
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -128,7 +129,7 @@ growproc(int n)
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
 int
-fork(void)
+fork(int tickets)
 {
   int i, pid;
   struct proc *np;
@@ -152,6 +153,20 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
+
+//################################################################################
+	// ajusta conforme as definicoes em proc.h
+	if (tickets == 0) {
+		np->tickets = DEFAULT_TICKETS;
+	} else if (tickets < 0) {
+		np->tickets = MIN_TICKETS;
+	} else if (tickets > MAX_TICKETS){
+		np->tickets = MAX_TICKETS;
+	} else {
+		np->tickets = tickets; // o fork passou uma quantidade aceitavel
+	}
+	//cprintf("um proc foi forkado: %d\n", np->tickets);
+//################################################################################
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -260,6 +275,34 @@ wait(void)
   }
 }
 
+//################################################################################
+// funcao randomica encontrada no usertest.c, usa sempre o randstate anterior
+int randstate = 1;
+int rand() {
+	int negativo = -1;
+  randstate = randstate * 1664525 + 1013904223;
+  
+  if (randstate < 0) { //nao ta entrando aqui
+	return (randstate*negativo);
+  }
+  return randstate;
+}
+
+// funcao para contar a quantidade de tickets distribuidas para processos executaveis
+// o sorteio so pode ser feito entre os RUNNABLE
+int totaltickets(void) {
+	struct proc *p;
+	int total = 0;
+	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+		if (p->state == RUNNABLE) {
+			total += p->tickets;
+		}
+	}
+	//cprintf("%d ", total);
+	return total;
+}
+//################################################################################
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -272,31 +315,55 @@ void
 scheduler(void)
 {
   struct proc *p;
+  int sorteado;
+  int qttickets;
 
   for(;;){
+    
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    
+//################################################################################
+	qttickets = totaltickets();
+	if (qttickets > 0) {
+		sorteado = rand();
+		if (sorteado < 0) { // nao pode ter um total negativo
+			sorteado = sorteado * -1;
+			cprintf("rand negativo\n");
+		}
+		if (qttickets < sorteado) { //se o numero sorteado e maior que a quantidade de tickets
+			sorteado = sorteado % qttickets; // pra escolher um numero que esta no alcance to totalde tickets
+			//cprintf("ajuste %d\n", sorteado);
+		}
+			
+			for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+				if (p->state == RUNNABLE) {
+					sorteado = sorteado - p->tickets;
+				} 
+				if(p->state != RUNNABLE || sorteado >= 0) {
+					continue;
+				}
+//################################################################################
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, p->context);
-      switchkvm();
+				//cprintf("p name %s\n", p->name);
+				// Switch to chosen process.  It is the process's job
+				// to release ptable.lock and then reacquire it
+				// before jumping back to us.
+				proc = p;
+				switchuvm(p);
+				p->state = RUNNING;
+				swtch(&cpu->scheduler, p->context);
+				switchkvm();
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      proc = 0;
-    }
-    release(&ptable.lock);
+				// Process is done running for now.
+				// It should have changed its p->state before coming back.
+				proc = 0;
+			}
+		}
+	release(&ptable.lock);
 
   }
 }
@@ -466,11 +533,11 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d %s %s tickets: %d", p->pid, state, p->name, p->tickets);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
-      for(i=0; i<10 && pc[i] != 0; i++)
-        cprintf(" %p", pc[i]);
+      for(i=0; i<10 && pc[i] != 0; i++){}
+        //cprintf(" %p", pc[i]);
     }
     cprintf("\n");
   }

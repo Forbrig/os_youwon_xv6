@@ -1,3 +1,9 @@
+//definindo os padroes de quantidade de tickets para o escalonador
+#define MIN_TICKETS 4
+#define MAX_TICKETS 64
+#define DEFAULT_TICKETS 16
+
+
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -63,6 +69,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int tickets; //qt de tickets para escalonar
 };
 
 // Process memory is laid out contiguously, low addresses first:

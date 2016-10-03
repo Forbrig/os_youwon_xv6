@@ -103,7 +103,7 @@ int             pipewrite(struct pipe*, char*, int);
 //PAGEBREAK: 16
 // proc.c
 void            exit(void);
-int             fork(void);
+int             fork(int); //parametro de entrada para os tickets
 int             growproc(int);
 int             kill(int);
 void            pinit(void);

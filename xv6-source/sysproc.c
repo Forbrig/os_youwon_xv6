@@ -10,7 +10,9 @@
 int
 sys_fork(void)
 {
-  return fork();
+  int argtickets; // algo aver como 0 representado em 32 bits
+  argint(0,&argtickets);
+  return fork(argtickets);
 }
 
 int
